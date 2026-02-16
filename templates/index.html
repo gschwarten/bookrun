@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="BookRun">
+    <title>BookRun</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #accae5;
+            color: #040949;
+            min-height: 100vh;
+            padding: 16px;
+            padding-bottom: 100px;
+        }
+
+        h1 { font-size: 22px; text-align: center; margin-bottom: 4px; color: #040949; }
+        .subtitle { text-align: center; color: #040949; opacity: 0.6; font-size: 14px; margin-bottom: 12px; }
+
+        /* Branch selector */
+        .branch-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .branch-selector label { font-size: 13px; font-weight: 600; }
+        .branch-selector select {
+            font-size: 14px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 2px solid #040949;
+            background: white;
+            color: #040949;
+            font-weight: 600;
+        }
+
+        /* Loading */
+        .loader { display: flex; flex-direction: column; align-items: center; padding: 40px 0; }
+        .spinner {
+            width: 36px; height: 36px;
+            border: 3px solid rgba(4,9,73,0.15); border-top-color: #040949;
+            border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader p { margin-top: 12px; color: #040949; opacity: 0.6; font-size: 14px; }
+
+        .error-msg {
+            background: #fff0f0; border: 1px solid #e8c4c4; color: #8b3a3a;
+            padding: 12px 16px; border-radius: 10px; text-align: center; font-size: 14px;
+        }
+
+        /* Book list */
+        .book-list { list-style: none; }
+
+        .book-item {
+            background: #ffffff; border-radius: 12px; padding: 12px;
+            margin-bottom: 10px; display: flex; align-items: center; gap: 10px;
+            box-shadow: 0 1px 3px rgba(4,9,73,0.1); transition: transform 0.2s ease;
+        }
+        .book-item.removed { opacity: 0.35; }
+        .book-item.kept { border-left: 4px solid #2e7d32; }
+
+        .rank { font-size: 13px; font-weight: 700; color: #040949; opacity: 0.4; min-width: 18px; text-align: center; }
+
+        .book-cover { width: 60px; height: 90px; border-radius: 4px; object-fit: cover; background: #d8e4ee; flex-shrink: 0; }
+        .book-info { flex: 1; min-width: 0; }
+        .book-title {
+            font-size: 15px; font-weight: 600; line-height: 1.3; color: #040949;
+            overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+            -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        }
+        .book-author { font-size: 13px; color: #040949; opacity: 0.5; margin-top: 2px; }
+        .book-rating { font-size: 12px; color: #d4a017; margin-top: 3px; }
+        .book-reason { font-size: 12px; color: #040949; opacity: 0.65; margin-top: 4px; font-style: italic; }
+
+        .drag-handle {
+            display: flex; align-items: center; justify-content: center;
+            width: 28px; flex-shrink: 0; cursor: grab;
+            -webkit-tap-highlight-color: transparent; touch-action: none; user-select: none;
+        }
+        .drag-handle:active { cursor: grabbing; }
+        .drag-handle svg { width: 20px; height: 20px; fill: rgba(4,9,73,0.25); }
+
+        .controls { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+        .ctrl-btn {
+            width: 32px; height: 28px; border: 1px solid rgba(4,9,73,0.12);
+            border-radius: 6px; background: rgba(172,202,229,0.3); color: #040949;
+            font-size: 13px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .ctrl-btn:active { background: rgba(172,202,229,0.6); }
+        .ctrl-btn.remove { color: #c44; font-size: 16px; }
+        .ctrl-btn.keep { color: #2e7d32; font-size: 15px; }
+        .ctrl-btn.keep.active { background: #2e7d32; color: white; }
+
+        .book-item.dragging {
+            position: fixed !important; z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.22); opacity: 0.95;
+            pointer-events: none; transition: none;
+        }
+
+        /* Buttons */
+        .primary-btn {
+            display: block; width: 100%; padding: 16px; background: #040949;
+            color: white; border: none; border-radius: 14px; font-size: 17px;
+            font-weight: 600; cursor: pointer; margin-top: 16px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .primary-btn:active { background: #060d6b; }
+
+        .secondary-btn {
+            display: block; width: 100%; padding: 10px; background: #040949;
+            color: white; border: none; border-radius: 10px; font-size: 14px;
+            font-weight: 600; cursor: pointer; margin-bottom: 14px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .secondary-btn:active { background: #060d6b; }
+
+        /* Infinite scroll hint */
+        .scroll-hint {
+            text-align: center; padding: 16px; color: #040949; opacity: 0.4; font-size: 13px;
+        }
+
+        /* Tabs */
+        .tabs { display: flex; margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 2px solid #040949; }
+        .tab {
+            flex: 1; padding: 10px 8px; text-align: center; font-size: 14px; font-weight: 600;
+            cursor: pointer; background: #ffffff; color: #040949; border: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .tab.active { background: #040949; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Results */
+        .results-section { margin-top: 24px; }
+        .result-card {
+            background: #ffffff; border-radius: 12px; padding: 14px;
+            margin-bottom: 10px; box-shadow: 0 1px 3px rgba(4,9,73,0.1);
+        }
+        .result-title { font-size: 15px; font-weight: 600; color: #040949; }
+        .result-author { font-size: 13px; color: #040949; opacity: 0.5; }
+        .result-status {
+            display: inline-block; font-size: 13px; font-weight: 600;
+            margin-top: 6px; padding: 3px 10px; border-radius: 20px;
+        }
+        .status-available { background: #e8f5e9; color: #2e7d32; }
+        .status-park { background: #c8e6c9; color: #1b5e20; }
+        .status-hold { background: #fff3e0; color: #e65100; }
+        .status-unknown { background: #f0f0f0; color: #666; }
+        .result-link { display: inline-block; margin-top: 6px; margin-left: 6px; font-size: 13px; color: #040949; text-decoration: underline; }
+        .hold-link {
+            display: inline-block; margin-top: 8px; padding: 6px 14px;
+            background: #040949; color: white; border-radius: 8px;
+            font-size: 13px; font-weight: 600; text-decoration: none;
+        }
+        .result-detail { font-size: 13px; color: #040949; opacity: 0.5; margin-top: 4px; }
+
+        .refresh-link { display: block; text-align: center; margin-top: 20px; color: #040949; font-size: 14px; text-decoration: underline; cursor: pointer; }
+        .badge { display: inline-block; background: #040949; color: white; font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 10px; margin-left: 6px; }
+
+        .footer { background: #ffffff; text-align: center; padding: 16px; margin: 30px -16px -100px -16px; font-size: 13px; color: #040949; opacity: 0.6; }
+        .footer a { color: #040949; text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<h1>BookRun</h1>
+<p class="subtitle">SFPL</p>
+
+<!-- Branch selector -->
+<div class="branch-selector">
+    <label for="branch-select">My branch:</label>
+    <select id="branch-select" onchange="onBranchChange()">
+        <option value="">Loading branches...</option>
+    </select>
+</div>
+
+<div id="app">
+    <div id="loading-recs" class="loader">
+        <div class="spinner"></div>
+        <p>Fetching your Goodreads list & ranking with AI...</p>
+    </div>
+
+    <div id="recs-section" style="display:none;">
+        <button id="check-btn-top" class="secondary-btn" onclick="checkLibrary()">
+            Check Park Availability
+        </button>
+        <p style="font-size:14px; color:#040949; opacity:0.6; margin-bottom:6px; text-align:center;">
+            Your top picks. Tap ♥ to keep favorites across re-rolls.
+        </p>
+        <p style="font-size:12px; color:#040949; opacity:0.4; margin-bottom:12px; text-align:center;">
+            Top 10 will be checked at the library. Scroll for more.
+        </p>
+        <p id="save-status" style="font-size:12px; color:#040949; opacity:0.5; text-align:center; margin-bottom:8px; display:none;"></p>
+        <ul id="book-list" class="book-list"></ul>
+        <div id="scroll-hint" class="scroll-hint" style="display:none;">Loading more...</div>
+        <button id="check-btn" class="primary-btn" onclick="checkLibrary()">
+            Check Park Availability (Top 10)
+        </button>
+        <a class="refresh-link" onclick="loadRecommendations(true)">Re-roll recommendations (keeps ♥)</a>
+    </div>
+
+    <div id="loading-library" style="display:none;" class="loader">
+        <div class="spinner"></div>
+        <p id="library-progress">Checking availability... (0 / 0)</p>
+    </div>
+
+    <div id="results-section" style="display:none;"></div>
+
+    <div id="error" style="display:none;" class="error-msg"></div>
+</div>
+
+<script>
+    let books = [];
+    let visibleCount = 10;
+    let selectedBranch = 'PARK BRANCH';
+
+    // ── Branch selector ───────────────────────────────────────────
+    async function loadBranches() {
+        try {
+            const resp = await fetch('/api/branches');
+            const data = await resp.json();
+            const sel = document.getElementById('branch-select');
+            sel.innerHTML = '';
+            data.branches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                opt.textContent = b.replace(' BRANCH', '').replace(/\b\w/g, c => c.toUpperCase());
+                if (b === data.default) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            selectedBranch = data.default;
+            updateBranchButtons();
+        } catch(e) {}
+    }
+
+    function onBranchChange() {
+        selectedBranch = document.getElementById('branch-select').value;
+        updateBranchButtons();
+    }
+
+    function getBranchDisplayName() {
+        return selectedBranch.replace(' BRANCH', '').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function updateBranchButtons() {
+        const name = getBranchDisplayName();
+        const topBtn = document.getElementById('check-btn-top');
+        const bottomBtn = document.getElementById('check-btn');
+        if (topBtn) topBtn.textContent = `Check ${name} Availability`;
+        if (bottomBtn) bottomBtn.textContent = `Check ${name} Availability (Top 10)`;
+    }
+
+    // ── Load recommendations ──────────────────────────────────────
+    async function loadRecommendations(refresh = false) {
+        show('loading-recs');
+        hide('recs-section', 'results-section', 'error');
+
+        // Preserve kept books before refresh
+        const kept = books.filter(b => b._kept);
+
+        try {
+            const url = '/api/recommendations' + (refresh ? '?refresh=1' : '');
+            const resp = await fetch(url);
+            const data = await resp.json();
+
+            if (data.error) { showError(data.error); return; }
+
+            let newBooks = data.books || [];
+            if (newBooks.length === 0) { showError('No books found on your to-read shelf.'); return; }
+
+            if (refresh && kept.length > 0) {
+                // Merge: kept books stay at top, remove dupes from new list
+                const keptTitles = new Set(kept.map(b => b.title.toLowerCase()));
+                newBooks = newBooks.filter(b => !keptTitles.has(b.title.toLowerCase()));
+                books = [...kept, ...newBooks];
+            } else {
+                books = newBooks;
+            }
+
+            visibleCount = 10;
+            renderBooks();
+            hide('loading-recs');
+            show('recs-section');
+        } catch (e) {
+            showError('Failed to load recommendations. ' + e.message);
+        }
+    }
+
+    // ── Render books (with infinite scroll) ───────────────────────
+    function renderBooks() {
+        const ul = document.getElementById('book-list');
+        ul.innerHTML = '';
+
+        const toShow = books.slice(0, visibleCount);
+        toShow.forEach((book, i) => {
+            const li = document.createElement('li');
+            li.className = 'book-item' + (book._removed ? ' removed' : '') + (book._kept ? ' kept' : '');
+            li.dataset.index = i;
+            li.innerHTML = `
+                <div class="drag-handle">
+                    <svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+                </div>
+                <span class="rank">${i + 1}</span>
+                ${book.image
+                    ? `<img class="book-cover" src="${book.image}" alt="">`
+                    : `<div class="book-cover"></div>`}
+                <div class="book-info">
+                    <div class="book-title">${esc(book.title)}</div>
+                    <div class="book-author">${esc(book.author)}</div>
+                    ${book.avg_rating ? `<div class="book-rating">${stars(book.avg_rating)} ${book.avg_rating.toFixed(2)}</div>` : ''}
+                    ${book.reason ? `<div class="book-reason">${esc(book.reason)}</div>` : ''}
+                </div>
+                <div class="controls">
+                    <button class="ctrl-btn keep ${book._kept ? 'active' : ''}" onclick="toggleKeep(${i})">♥</button>
+                    ${i > 0 ? `<button class="ctrl-btn" onclick="moveUp(${i})">&#9650;</button>` : '<div style="height:28px"></div>'}
+                    ${i < books.length - 1 ? `<button class="ctrl-btn" onclick="moveDown(${i})">&#9660;</button>` : '<div style="height:28px"></div>'}
+                    <button class="ctrl-btn remove" onclick="toggleRemove(${i})">&times;</button>
+                </div>
+            `;
+            ul.appendChild(li);
+        });
+
+        // Show scroll hint if more books
+        const hint = document.getElementById('scroll-hint');
+        if (visibleCount < books.length) {
+            hint.textContent = `Showing ${visibleCount} of ${books.length} — scroll for more`;
+            hint.style.display = '';
+        } else {
+            hint.style.display = 'none';
+        }
+
+        initDragAndDrop();
+    }
+
+    // Infinite scroll
+    let scrollTicking = false;
+    window.addEventListener('scroll', () => {
+        if (scrollTicking) return;
+        scrollTicking = true;
+        requestAnimationFrame(() => {
+            scrollTicking = false;
+            if (!document.getElementById('recs-section').style.display &&
+                document.getElementById('recs-section').style.display !== 'none' &&
+                visibleCount < books.length) {
+                const hint = document.getElementById('scroll-hint');
+                if (hint && hint.getBoundingClientRect().top < window.innerHeight + 200) {
+                    visibleCount = Math.min(visibleCount + 10, books.length);
+                    renderBooks();
+                }
+            }
+        });
+    });
+
+    function toggleKeep(i) {
+        books[i]._kept = !books[i]._kept;
+        renderBooks();
+        saveList();
+    }
+
+    function moveUp(i) {
+        if (i <= 0) return;
+        [books[i - 1], books[i]] = [books[i], books[i - 1]];
+        renderBooks();
+        saveList();
+    }
+
+    function moveDown(i) {
+        if (i >= books.length - 1) return;
+        [books[i], books[i + 1]] = [books[i + 1], books[i]];
+        renderBooks();
+        saveList();
+    }
+
+    function toggleRemove(i) {
+        books[i]._removed = !books[i]._removed;
+        renderBooks();
+        saveList();
+    }
+
+    // ── Drag-to-reorder with live reshuffling ─────────────────────
+    let drag = null;
+
+    function initDragAndDrop() {
+        document.querySelectorAll('.book-item .drag-handle').forEach(handle => {
+            handle.addEventListener('mousedown', e => {
+                e.preventDefault();
+                beginDrag(handle.closest('.book-item'), e.clientY);
+            });
+            handle.addEventListener('touchstart', e => {
+                beginDrag(handle.closest('.book-item'), e.touches[0].clientY);
+            }, {passive: true});
+        });
+    }
+
+    function beginDrag(item, startY) {
+        const ul = document.getElementById('book-list');
+        const items = Array.from(ul.querySelectorAll('.book-item'));
+        const fromIndex = items.indexOf(item);
+        const rect = item.getBoundingClientRect();
+        const ulRect = ul.getBoundingClientRect();
+        const rects = items.map(el => el.getBoundingClientRect());
+        const itemH = rect.height;
+        const gap = 10;
+
+        ul.style.height = ulRect.height + 'px';
+        ul.style.position = 'relative';
+
+        items.forEach((el, i) => {
+            el.style.position = 'absolute';
+            el.style.left = '0'; el.style.right = '0';
+            el.style.top = (rects[i].top - ulRect.top) + 'px';
+            el.style.width = rects[i].width + 'px';
+            el.style.margin = '0';
+            if (i !== fromIndex) el.style.transition = 'top 0.2s ease';
+        });
+
+        item.classList.add('dragging');
+        item.style.width = rect.width + 'px';
+        item.style.top = rect.top + 'px';
+        item.style.left = rect.left + 'px';
+        item.style.position = 'fixed';
+
+        drag = { item, items, fromIndex, currentIndex: fromIndex, startY, offsetY: startY - rect.top, itemH: itemH + gap, ulTop: ulRect.top, rects };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchmove', onMoveTouch, {passive: false});
+        document.addEventListener('touchend', onEnd);
+    }
+
+    function onMoveTouch(e) { e.preventDefault(); onMove(e.touches[0]); }
+
+    function onMove(e) {
+        if (!drag) return;
+        const y = e.clientY;
+        drag.item.style.top = (y - drag.offsetY) + 'px';
+        const relY = y - drag.offsetY - drag.ulTop + (drag.itemH / 2);
+        let newIndex = Math.round(relY / drag.itemH);
+        newIndex = Math.max(0, Math.min(drag.items.length - 1, newIndex));
+        if (newIndex !== drag.currentIndex) { drag.currentIndex = newIndex; layoutItems(); }
+    }
+
+    function layoutItems() {
+        const {items, fromIndex, currentIndex, itemH} = drag;
+        items.forEach((el, i) => {
+            if (i === fromIndex) return;
+            let visualPos = i;
+            if (fromIndex < currentIndex) { if (i > fromIndex && i <= currentIndex) visualPos = i - 1; }
+            else if (fromIndex > currentIndex) { if (i >= currentIndex && i < fromIndex) visualPos = i + 1; }
+            el.style.top = (visualPos * itemH) + 'px';
+        });
+    }
+
+    function onEnd() {
+        if (!drag) return;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchmove', onMoveTouch);
+        document.removeEventListener('touchend', onEnd);
+        const {fromIndex, currentIndex, items} = drag;
+        const ul = document.getElementById('book-list');
+        ul.style.height = ''; ul.style.position = '';
+        items.forEach(el => {
+            el.classList.remove('dragging');
+            el.style.position = ''; el.style.left = ''; el.style.right = '';
+            el.style.top = ''; el.style.width = ''; el.style.margin = ''; el.style.transition = '';
+        });
+        drag = null;
+        if (fromIndex !== currentIndex) {
+            const [moved] = books.splice(fromIndex, 1);
+            books.splice(currentIndex, 0, moved);
+            renderBooks();
+            saveList();
+        }
+    }
+
+    // ── Save ──────────────────────────────────────────────────────
+    let saveTimeout;
+    function saveList() {
+        clearTimeout(saveTimeout);
+        const status = document.getElementById('save-status');
+        status.textContent = 'Saving...'; status.style.display = '';
+        saveTimeout = setTimeout(async () => {
+            try {
+                await fetch('/api/save-list', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({books: books}),
+                });
+                status.textContent = 'List saved';
+                setTimeout(() => { status.style.display = 'none'; }, 1500);
+            } catch (e) { status.textContent = 'Failed to save'; }
+        }, 500);
+    }
+
+    // ── Check library ─────────────────────────────────────────────
+    async function checkLibrary() {
+        const active = books.filter(b => !b._removed).slice(0, 10);
+        if (active.length === 0) { showError('Add at least one book to check.'); return; }
+
+        hide('recs-section', 'error');
+        show('loading-library');
+        document.getElementById('library-progress').textContent = `Checking ${active.length} books...`;
+
+        try {
+            const resp = await fetch('/api/check-library', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({books: active.map(b => ({title: b.title, author: b.author}))}),
+            });
+            const data = await resp.json();
+            if (data.error) { showError(data.error); return; }
+
+            renderResults(data.results);
+            hide('loading-library');
+            show('results-section');
+        } catch (e) { showError('Failed to check library. ' + e.message); }
+    }
+
+    function renderResults(results) {
+        const branch = selectedBranch.toUpperCase();
+
+        // Split: available at selected branch vs everything else
+        const atBranch = results.filter(b =>
+            b.branches_available && b.branches_available.some(br => br.toUpperCase() === branch)
+        );
+        const notAtBranch = results.filter(b =>
+            !b.branches_available || !b.branches_available.some(br => br.toUpperCase() === branch)
+        );
+
+        const branchName = branch.replace(' BRANCH', '').replace(/\b\w/g, c => c.toUpperCase());
+
+        const div = document.getElementById('results-section');
+        let html = '';
+
+        html += `<div class="tabs">
+            <button class="tab active" onclick="switchTab('available', this)">At ${esc(branchName)} <span class="badge" style="background:white;color:#040949;">${atBranch.length}</span></button>
+            <button class="tab" onclick="switchTab('unavailable', this)">Not Available <span class="badge">${notAtBranch.length}</span></button>
+        </div>`;
+
+        // Available at branch tab
+        html += '<div id="tab-available" class="tab-content active">';
+        if (atBranch.length > 0) {
+            atBranch.forEach(b => {
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">${esc(b.title)}</div>
+                        <div class="result-author">${esc(b.author)}</div>
+                        <span class="result-status status-park">At ${esc(branchName)}</span>
+                        ${b.url ? `<a class="result-link" href="${b.url}" target="_blank">View on SFPL &rarr;</a>` : ''}
+                    </div>
+                `;
+            });
+        } else {
+            html += `<p style="text-align:center; color:#040949; opacity:0.5; padding:20px;">None of your picks are at ${esc(branchName)} right now.</p>`;
+        }
+        html += '</div>';
+
+        // Not available tab
+        html += '<div id="tab-unavailable" class="tab-content">';
+        if (notAtBranch.length > 0) {
+            notAtBranch.forEach(b => {
+                let statusClass = 'status-unknown';
+                let detail = b.detail || 'Not at ' + branchName;
+
+                if (b.status === 'available') {
+                    // Available somewhere else, just not at preferred branch
+                    statusClass = 'status-available';
+                    const otherBranches = (b.branches_available || [])
+                        .map(br => br.replace(' BRANCH','').replace(/\b\w/g, c => c.toUpperCase()))
+                        .slice(0, 3).join(', ');
+                    detail = otherBranches ? 'Available at: ' + otherBranches : detail;
+                } else if (b.status === 'in_use') {
+                    statusClass = 'status-hold';
+                }
+
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">${esc(b.title)}</div>
+                        <div class="result-author">${esc(b.author)}</div>
+                        <span class="result-status ${statusClass}">${esc(detail)}</span>
+                        ${b.holds ? `<div class="result-detail">${esc(b.holds)}</div>` : ''}
+                        ${b.url ? `<a class="hold-link" href="${b.url}" target="_blank">Place Hold on SFPL</a>` : ''}
+                    </div>
+                `;
+            });
+        } else {
+            html += `<p style="text-align:center; color:#040949; opacity:0.5; padding:20px;">All your picks are at ${esc(branchName)}!</p>`;
+        }
+        html += '</div>';
+
+        html += '<a class="refresh-link" onclick="startOver()">Start Over</a>';
+        div.innerHTML = html;
+    }
+
+    function switchTab(tab, btn) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + tab).classList.add('active');
+    }
+
+    function startOver() { hide('results-section'); show('recs-section'); }
+
+    // ── Helpers ────────────────────────────────────────────────────
+    function show(...ids) { ids.forEach(id => document.getElementById(id).style.display = ''); }
+    function hide(...ids) { ids.forEach(id => document.getElementById(id).style.display = 'none'); }
+
+    function showError(msg) {
+        hide('loading-recs', 'loading-library');
+        document.getElementById('error').textContent = msg; show('error');
+    }
+
+    function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    function stars(rating) {
+        const full = Math.floor(rating);
+        const half = rating - full >= 0.25 && rating - full < 0.75 ? 1 : 0;
+        const extraFull = rating - full >= 0.75 ? 1 : 0;
+        const empty = 5 - full - half - extraFull;
+        return '★'.repeat(full + extraFull) + (half ? '½' : '') + '☆'.repeat(empty);
+    }
+
+    // ── Init ──────────────────────────────────────────────────────
+    loadBranches();
+    loadRecommendations();
+</script>
+
+<footer class="footer">
+    Made with ❤️ by <a href="https://geoff.lovable.app" target="_blank">Geoff</a>
+</footer>
+
+</body>
+</html>
