@@ -9,10 +9,12 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+from flask_cors import CORS
 
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app, origins=["https://geoff.lovable.app"])
 
 GOODREADS_USER_ID = os.environ.get("GOODREADS_USER_ID", "219870")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
