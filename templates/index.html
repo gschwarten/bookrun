@@ -66,7 +66,24 @@
         .book-item.removed { opacity: 0.35; }
         .book-item.kept { border-left: 4px solid #2e7d32; }
 
-        .rank { font-size: 13px; font-weight: 700; color: #040949; opacity: 0.4; min-width: 18px; text-align: center; }
+        .rank {
+            font-size: 13px; font-weight: 700; color: #040949; opacity: 0.4;
+            min-width: 24px; text-align: center; cursor: pointer;
+            padding: 2px 4px; border-radius: 4px;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .rank:hover { background: rgba(4,9,73,0.08); }
+
+        .rank-input {
+            width: 36px; font-size: 13px; font-weight: 700; color: #040949;
+            text-align: center; border: 2px solid #040949; border-radius: 4px;
+            padding: 2px; background: white; outline: none;
+        }
+
+        .book-item.removing {
+            transition: opacity 0.3s ease, max-height 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+            opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; overflow: hidden;
+        }
 
         .book-cover { width: 60px; height: 90px; border-radius: 4px; object-fit: cover; background: #d8e4ee; flex-shrink: 0; }
         .book-info { flex: 1; min-width: 0; }
@@ -302,13 +319,13 @@
         const toShow = books.slice(0, visibleCount);
         toShow.forEach((book, i) => {
             const li = document.createElement('li');
-            li.className = 'book-item' + (book._removed ? ' removed' : '') + (book._kept ? ' kept' : '');
+            li.className = 'book-item' + (book._kept ? ' kept' : '');
             li.dataset.index = i;
             li.innerHTML = `
                 <div class="drag-handle">
                     <svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
                 </div>
-                <span class="rank">${i + 1}</span>
+                <span class="rank" onclick="editRank(${i}, this)" title="Tap to move">${i + 1}</span>
                 ${book.image
                     ? `<img class="book-cover" src="${book.image}" alt="">`
                     : `<div class="book-cover"></div>`}
@@ -380,9 +397,52 @@
     }
 
     function toggleRemove(i) {
-        books[i]._removed = !books[i]._removed;
-        renderBooks();
-        saveList();
+        const items = document.querySelectorAll('#book-list .book-item');
+        const item = items[i];
+        if (item) {
+            item.style.maxHeight = item.offsetHeight + 'px';
+            requestAnimationFrame(() => {
+                item.classList.add('removing');
+                setTimeout(() => {
+                    books.splice(i, 1);
+                    renderBooks();
+                    saveList();
+                }, 300);
+            });
+        } else {
+            books.splice(i, 1);
+            renderBooks();
+            saveList();
+        }
+    }
+
+    function editRank(i, el) {
+        const current = i + 1;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'rank-input';
+        input.value = current;
+        input.min = 1;
+        input.max = books.length;
+        el.replaceWith(input);
+        input.focus();
+        input.select();
+
+        function commit() {
+            let newPos = parseInt(input.value);
+            if (isNaN(newPos) || newPos === current) { renderBooks(); return; }
+            newPos = Math.max(1, Math.min(books.length, newPos)) - 1;
+            const [moved] = books.splice(i, 1);
+            books.splice(newPos, 0, moved);
+            renderBooks();
+            saveList();
+        }
+
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { input.blur(); }
+            if (e.key === 'Escape') { renderBooks(); }
+        });
     }
 
     // ── Drag-to-reorder with live reshuffling ─────────────────────
@@ -428,11 +488,26 @@
         item.style.left = rect.left + 'px';
         item.style.position = 'fixed';
 
-        drag = { item, items, fromIndex, currentIndex: fromIndex, startY, offsetY: startY - rect.top, itemH: itemH + gap, ulTop: ulRect.top, rects };
+        drag = { item, items, fromIndex, currentIndex: fromIndex, startY, offsetY: startY - rect.top, itemH: itemH + gap, ulTop: ulRect.top, rects, lastY: startY, scrollInterval: null };
+        drag.scrollInterval = setInterval(() => { autoScroll(); }, 16);
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onEnd);
         document.addEventListener('touchmove', onMoveTouch, {passive: false});
         document.addEventListener('touchend', onEnd);
+    }
+
+    function autoScroll() {
+        if (!drag) return;
+        const y = drag.lastY;
+        const edge = 60;
+        const speed = 8;
+        if (y < edge) {
+            window.scrollBy(0, -speed);
+            drag.ulTop = document.getElementById('book-list').getBoundingClientRect().top;
+        } else if (y > window.innerHeight - edge) {
+            window.scrollBy(0, speed);
+            drag.ulTop = document.getElementById('book-list').getBoundingClientRect().top;
+        }
     }
 
     function onMoveTouch(e) { e.preventDefault(); onMove(e.touches[0]); }
@@ -440,6 +515,7 @@
     function onMove(e) {
         if (!drag) return;
         const y = e.clientY;
+        drag.lastY = y;
         drag.item.style.top = (y - drag.offsetY) + 'px';
         const relY = y - drag.offsetY - drag.ulTop + (drag.itemH / 2);
         let newIndex = Math.round(relY / drag.itemH);
@@ -460,6 +536,7 @@
 
     function onEnd() {
         if (!drag) return;
+        clearInterval(drag.scrollInterval);
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onEnd);
         document.removeEventListener('touchmove', onMoveTouch);
@@ -501,7 +578,7 @@
 
     // ── Check library ─────────────────────────────────────────────
     async function checkLibrary() {
-        const active = books.filter(b => !b._removed).slice(0, 10);
+        const active = books.slice(0, 10);
         if (active.length === 0) { showError('Add at least one book to check.'); return; }
 
         hide('recs-section', 'error');
