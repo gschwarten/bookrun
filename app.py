@@ -14,7 +14,12 @@ from flask_cors import CORS
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=["https://geoff.lovable.app"])
+CORS(app, origins=[
+    "https://geoff.lovable.app",
+    r"https://.*\.lovableproject\.com",
+    r"https://.*\.lovable\.dev",
+    r"https://.*\.lovable\.app",
+])
 
 GOODREADS_USER_ID = os.environ.get("GOODREADS_USER_ID", "219870")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -463,6 +468,20 @@ def api_check_library():
 
     results = check_sfpl_books(books)
     return jsonify({"results": results})
+
+
+@app.route("/api/check-book", methods=["POST"])
+def api_check_book():
+    """Check SFPL availability for a single book."""
+    data = request.get_json()
+    title = data.get("title", "")
+    author = data.get("author", "")
+
+    if not title:
+        return jsonify({"error": "No title provided"}), 400
+
+    result = search_sfpl(title, author)
+    return jsonify(result)
 
 
 if __name__ == "__main__":

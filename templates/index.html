@@ -506,20 +506,26 @@
 
         hide('recs-section', 'error');
         show('loading-library');
-        document.getElementById('library-progress').textContent = `Checking ${active.length} books...`;
 
-        try {
-            const resp = await fetch('/api/check-library', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({books: active.map(b => ({title: b.title, author: b.author}))}),
-            });
-            const data = await resp.json();
-            if (data.error) { showError(data.error); return; }
+        const results = [];
+        for (let i = 0; i < active.length; i++) {
+            document.getElementById('library-progress').textContent =
+                `Checking ${i + 1} of ${active.length}: ${active[i].title.substring(0, 30)}...`;
+            try {
+                const resp = await fetch('/api/check-book', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: active[i].title, author: active[i].author}),
+                });
+                const data = await resp.json();
+                results.push(data);
+            } catch (e) {
+                results.push({title: active[i].title, author: active[i].author, status: 'unknown', detail: 'Could not check', branches_available: []});
+            }
+        }
 
-            renderResults(data.results);
-            hide('loading-library');
-            show('results-section');
-        } catch (e) { showError('Failed to check library. ' + e.message); }
+        renderResults(results);
+        hide('loading-library');
+        show('results-section');
     }
 
     function renderResults(results) {
