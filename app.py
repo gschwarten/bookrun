@@ -3,6 +3,7 @@ import os
 import re
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 
 import anthropic
 import requests
@@ -58,45 +59,66 @@ GOODREADS_HEADERS = {
 }
 
 
-def fetch_goodreads_shelf(shelf, pages=3):
-    """Fetch books from a Goodreads RSS shelf. Returns list of dicts."""
-    books = []
-    for page in range(1, pages + 1):
-        url = (
-            f"https://www.goodreads.com/review/list_rss/{GOODREADS_USER_ID}"
-            f"?shelf={shelf}&page={page}"
-        )
-        try:
-            resp = requests.get(url, headers=GOODREADS_HEADERS, timeout=15)
-            resp.raise_for_status()
-        except requests.RequestException:
-            break
+def _fetch_shelf_page(shelf, page):
+    """Fetch one RSS page. Returns parsed book dicts, or [] on any failure."""
+    url = (
+        f"https://www.goodreads.com/review/list_rss/{GOODREADS_USER_ID}"
+        f"?shelf={shelf}&page={page}"
+    )
+    try:
+        resp = requests.get(url, headers=GOODREADS_HEADERS, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return []
 
-        # Strip undeclared xhtml namespace tag that breaks ElementTree
-        content = re.sub(r"<xhtml:meta[^/]*/>", "", resp.text)
+    # Strip undeclared xhtml namespace tag that breaks ElementTree
+    content = re.sub(r"<xhtml:meta[^/]*/>", "", resp.text)
+    try:
         root = ET.fromstring(content)
-        items = root.findall(".//item")
-        if not items:
+    except ET.ParseError:
+        return []
+
+    books = []
+    for item in root.findall(".//item"):
+        title = item.findtext("title", "").strip()
+        author = item.findtext("author_name", "").strip()
+        rating = item.findtext("user_rating", "0").strip()
+        avg_rating = item.findtext("average_rating", "0").strip()
+        image = item.findtext("book_image_url", "").strip()
+        book_id = item.findtext("book_id", "").strip()
+
+        if title:
+            books.append({
+                "title": title,
+                "author": author,
+                "user_rating": int(rating) if rating else 0,
+                "avg_rating": float(avg_rating) if avg_rating else 0.0,
+                "image": image,
+                "book_id": book_id,
+            })
+    return books
+
+
+def fetch_goodreads_shelf(shelf, pages=3):
+    """Fetch books from a Goodreads RSS shelf. Returns list of dicts.
+
+    Pages are fetched concurrently rather than one after another: six
+    sequential round-trips was the bulk of the request time, and a slow
+    Goodreads response used to push the whole request past the worker
+    timeout. Results are re-assembled in page order.
+    """
+    with ThreadPoolExecutor(max_workers=pages) as pool:
+        per_page = list(pool.map(
+            lambda page: _fetch_shelf_page(shelf, page),
+            range(1, pages + 1),
+        ))
+
+    books = []
+    for page_books in per_page:
+        # An empty page means the shelf ended; nothing after it is useful.
+        if not page_books:
             break
-
-        for item in items:
-            title = item.findtext("title", "").strip()
-            author = item.findtext("author_name", "").strip()
-            rating = item.findtext("user_rating", "0").strip()
-            avg_rating = item.findtext("average_rating", "0").strip()
-            image = item.findtext("book_image_url", "").strip()
-            book_id = item.findtext("book_id", "").strip()
-
-            if title:
-                books.append({
-                    "title": title,
-                    "author": author,
-                    "user_rating": int(rating) if rating else 0,
-                    "avg_rating": float(avg_rating) if avg_rating else 0.0,
-                    "image": image,
-                    "book_id": book_id,
-                })
-
+        books.extend(page_books)
     return books
 
 
