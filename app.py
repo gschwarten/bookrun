@@ -1,4 +1,5 @@
 import json
+import csv
 import os
 import re
 import time
@@ -122,13 +123,72 @@ def fetch_goodreads_shelf(shelf, pages=3):
     return books
 
 
+# Goodreads shut off its RSS feeds in Nov 2026 (every list_rss URL now 404s),
+# so the primary source is the library export CSV from
+# goodreads.com/review/import. Refresh it by re-exporting and replacing the file.
+GOODREADS_CSV = os.environ.get(
+    "GOODREADS_CSV",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "goodreads_library_export.csv"),
+)
+
+
+def _clean_isbn(raw):
+    # Export wraps ISBNs as ="9780000000000" so spreadsheets keep leading zeros.
+    return re.sub(r"[^0-9Xx]", "", raw or "")
+
+
+def _to_int_rating(raw):
+    # Export writes ratings as "4.0"; half stars ("3.75") round to nearest.
+    try:
+        return int(round(float(raw)))
+    except ValueError:
+        return 0
+
+
+def read_goodreads_csv(shelf):
+    """Books on one exclusive shelf ("to-read", "read") from the export CSV."""
+    if not os.path.exists(GOODREADS_CSV):
+        return []
+    books = []
+    with open(GOODREADS_CSV, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            if (row.get("Exclusive Shelf") or "").strip() != shelf:
+                continue
+            title = (row.get("Title") or "").strip()
+            if not title:
+                continue
+            isbn = _clean_isbn(row.get("ISBN13")) or _clean_isbn(row.get("ISBN"))
+            rating = (row.get("My Rating") or "0").strip()
+            avg = (row.get("Average Rating") or "0").strip()
+            books.append({
+                "title": title,
+                "author": (row.get("Author") or "").strip(),
+                "user_rating": _to_int_rating(rating),
+                "avg_rating": float(avg) if avg else 0.0,
+                "image": (
+                    f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg?default=false"
+                    if isbn else ""
+                ),
+                "book_id": (row.get("Book Id") or "").strip(),
+                "date_added": (row.get("Date Added") or "").strip(),
+            })
+    # Newest additions first, matching the old RSS order.
+    books.sort(key=lambda b: b["date_added"], reverse=True)
+    return books
+
+
+def get_shelf(shelf):
+    """CSV export first; fall back to RSS in case Goodreads restores it."""
+    return read_goodreads_csv(shelf) or fetch_goodreads_shelf(shelf, pages=3)
+
+
 def get_to_read_books():
-    return fetch_goodreads_shelf("to-read", pages=3)
+    return get_shelf("to-read")
 
 
 def get_top_rated_books():
     """Get books the user rated highly (4-5 stars) from their read shelf."""
-    books = fetch_goodreads_shelf("read", pages=3)
+    books = get_shelf("read")
     return [b for b in books if b["user_rating"] >= 4]
 
 
@@ -448,7 +508,7 @@ def api_recommendations():
     if not to_read:
         return jsonify({
             "error": "Could not fetch your Goodreads to-read shelf. "
-                     "Make sure your profile is public.",
+                     "The Goodreads library export is missing or empty.",
             "books": [],
         }), 200
 

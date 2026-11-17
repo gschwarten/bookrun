@@ -335,7 +335,7 @@
                 </div>
                 <span class="rank" onclick="editRank(${i}, this)" title="Tap to move">${i + 1}</span>
                 ${book.image
-                    ? `<img class="book-cover" src="${book.image}" alt="">`
+                    ? `<img class="book-cover" src="${book.image}" alt="" onerror="this.remove()">`
                     : `<div class="book-cover"></div>`}
                 <div class="book-info">
                     <div class="book-title">${esc(book.title)}</div>
